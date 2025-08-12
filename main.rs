@@ -74,6 +74,13 @@ impl TreeNode {
 }
 
 fn get_config_file_path() -> std::path::PathBuf {
+    // Сначала проверяем старое место (рядом с exe) для обратной совместимости
+    let legacy_config = std::path::PathBuf::from("repo_manager_config.json");
+    if legacy_config.exists() {
+        println!("Using legacy config location: {:?}", legacy_config);
+        return legacy_config;
+    }
+    
     #[cfg(target_os = "macos")]
     {
         if let Some(home_dir) = std::env::var_os("HOME") {
@@ -107,7 +114,7 @@ fn get_config_file_path() -> std::path::PathBuf {
     }
     
     // Fallback для других ОС или если переменные среды недоступны
-    std::path::PathBuf::from("repo_manager_config.json")
+    legacy_config
 }
 
 #[derive(Debug)]
