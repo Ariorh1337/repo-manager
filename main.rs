@@ -33,9 +33,9 @@ impl LogLevel {
     
     fn icon(&self) -> &str {
         match self {
-            LogLevel::Info => "ℹ️",
-            LogLevel::Warning => "⚠️", 
-            LogLevel::Error => "❌",
+            LogLevel::Info => "[I]",
+            LogLevel::Warning => "[!]", 
+            LogLevel::Error => "[E]",
         }
     }
 }
@@ -498,7 +498,7 @@ impl MyApp {
                 if has_children || has_repos {
                     let node_path = node.path.to_string_lossy().to_string();
                     let is_collapsed = self.collapsed_paths.contains(&node_path);
-                    let expand_symbol = if is_collapsed { "▶" } else { "🔽" };
+                    let expand_symbol = if is_collapsed { "+" } else { "-" };
                     
                     if ui.button(format!("{} {}", expand_symbol, node.name)).clicked() {
                         if is_collapsed {
@@ -514,7 +514,7 @@ impl MyApp {
                         ui.colored_label(egui::Color32::DARK_GRAY, format!("({} элементов)", total_items));
                     }
                 } else {
-                    ui.label(format!("📁 {}", node.name));
+                    ui.label(format!("[DIR] {}", node.name));
                 }
             });
             
@@ -611,7 +611,7 @@ impl MyApp {
                             }
                             
                             if repo.git_info.behind > 0 {
-                                let pull_button = ui.button(format!("⬇ {}", repo.git_info.behind));
+                                let pull_button = ui.button(format!("Pull {}", repo.git_info.behind));
                                 if pull_button.clicked() {
                                     self.log_info(format!("Starting pull for {}", repo.name));
                                     self.syncing_repos.insert(repo.path.clone());
@@ -623,7 +623,7 @@ impl MyApp {
                             }
                             
                             if repo.git_info.ahead > 0 {
-                                let push_button = ui.button(format!("⬆ {}", repo.git_info.ahead));
+                                let push_button = ui.button(format!("Push {}", repo.git_info.ahead));
                                 if push_button.clicked() {
                                     self.log_info(format!("Starting push for {}", repo.name));
                                     self.syncing_repos.insert(repo.path.clone());
@@ -643,7 +643,7 @@ impl MyApp {
 
                     // Колонка 4: Меню действий
                     ui.menu_button("»", |ui| {
-                        if ui.button("🔄 Fetch").clicked() {
+                        if ui.button("Fetch").clicked() {
                             self.log_info(format!("Starting fetch for {}", repo.name));
                             self.syncing_repos.insert(repo.path.clone());
                             if let Some(tx) = &self.app_sender {
@@ -651,18 +651,18 @@ impl MyApp {
                             }
                             ui.close_menu();
                         }
-                        if ui.button("🔄📥 Fetch with rebase").clicked() {
+                        if ui.button("Fetch & Rebase").clicked() {
                             println!("Fetch with rebase for {:?}", repo.path);
                             ui.close_menu();
                         }
-                        if ui.button("♻ Refresh").clicked() {
+                        if ui.button("Refresh").clicked() {
                             if let Some(tx) = &self.app_sender {
                                 refresh_repo_status_async::<AppMessage>(repo.path.clone(), tx.clone());
                             }
                             ui.close_menu();
                         }
                         ui.separator();
-                        if ui.button("🗑 Reset local changes").clicked() {
+                        if ui.button("Reset Changes").clicked() {
                             // Пробуем быструю версию, fallback на обычную
                             let reset_result = git_reset_hard_fast(&repo.path)
                                 .or_else(|_| git_reset_hard(&repo.path));
@@ -678,7 +678,7 @@ impl MyApp {
                             ui.close_menu();
                         }
                         ui.separator();
-                        if ui.button("🗑 Remove from list").clicked() {
+                        if ui.button("Remove").clicked() {
                             *to_remove.borrow_mut() = Some(*original_idx);
                             ui.close_menu();
                         }
@@ -1016,10 +1016,10 @@ impl eframe::App for MyApp {
                         
                         // Кнопки справа
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("❎").clicked() {
+                            if ui.button("Cancel").clicked() {
                                 to_remove = Some(idx);
                             }
-                            if ui.button("✅").clicked() {
+                            if ui.button("Save").clicked() {
                                 to_rename = Some((idx, self.new_workspace_name.clone()));
                             }
                         });
@@ -1036,10 +1036,10 @@ impl eframe::App for MyApp {
                         
                         // Кнопки справа
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("🗑").clicked() {
+                            if ui.button("Delete").clicked() {
                                 to_remove = Some(idx);
                             }
-                            if ui.button("»").clicked() {
+                            if ui.button("Edit").clicked() {
                                 self.editing_workspace = Some(idx);
                                 self.new_workspace_name = workspace.name.clone();
                             }
@@ -1185,7 +1185,7 @@ impl eframe::App for MyApp {
                 
                 // Показываем индикатор загрузки git информации
                 if self.pending_git_loads > 0 {
-                    ui.colored_label(egui::Color32::LIGHT_BLUE, format!("🔄 Loading git info... ({} left)", self.pending_git_loads));
+                    ui.colored_label(egui::Color32::LIGHT_BLUE, format!("[LOADING] Git info... ({} left)", self.pending_git_loads));
                 }
                 
                 // Показываем количество логов
@@ -1194,12 +1194,12 @@ impl eframe::App for MyApp {
                     let warning_count = self.logs.iter().filter(|log| matches!(log.level, LogLevel::Warning)).count();
                     
                     if error_count > 0 {
-                        ui.colored_label(egui::Color32::LIGHT_RED, format!("❌ {}", error_count));
+                        ui.colored_label(egui::Color32::LIGHT_RED, format!("[E] {}", error_count));
                     }
                     if warning_count > 0 {
-                        ui.colored_label(egui::Color32::YELLOW, format!("⚠️ {}", warning_count));
+                        ui.colored_label(egui::Color32::YELLOW, format!("[!] {}", warning_count));
                     }
-                    ui.colored_label(egui::Color32::LIGHT_GRAY, format!("📝 {}", self.logs.len()));
+                    ui.colored_label(egui::Color32::LIGHT_GRAY, format!("[LOG] {}", self.logs.len()));
                 }
             });
             
