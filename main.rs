@@ -1,5 +1,5 @@
-// Отключаем консоль в релизной сборке для Windows
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Отключаем консоль в релизной сборке
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod git_logic;
 
