@@ -1,0 +1,20 @@
+# Ignore target directory
+/target/
+
+# Ignore Cargo.lock (if your project is a library)
+Cargo.lock
+
+# Ignore backup files
+*.bak
+*.tmp
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE-specific files
+.idea/
+.vscode/
+*.iml
+
+repo_manager_config.json

@@ -1,0 +1,27 @@
+[package]
+name = "repo-manager"
+version = "0.1.0"
+authors = ["Your Name <youremail@example.com>"]
+edition = "2021"
+
+[dependencies]
+# GUI
+egui = "0.27"
+eframe = "0.27" # Фреймворк для запуска egui-приложений
+
+# Git-логика
+gix = { version = "0.62", features = ["blocking-network-client"] }
+
+# Асинхронность для фоновых задач
+tokio = { version = "1", features = ["full"] }
+crossbeam-channel = "0.5" # Для связи между UI и фоновыми потоками
+
+# Утилиты
+opener = "0.7" # Для открытия папок в системном проводнике
+serde = { version = "1.0", features = ["derive"] } # Для сохранения/загрузки состояния
+serde_json = "1.0" # Для JSON сериализации
+lazy_static = "1.4" # Для глобального пула операций
+
+[[bin]]
+name = "repo-manager"
+path = "main.rs"
