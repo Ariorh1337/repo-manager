@@ -73,7 +73,42 @@ impl TreeNode {
     }
 }
 
-const CONFIG_FILE: &str = "repo_manager_config.json";
+fn get_config_file_path() -> std::path::PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home_dir) = std::env::var_os("HOME") {
+            let mut path = std::path::PathBuf::from(home_dir);
+            path.push("Library");
+            path.push("Application Support");
+            path.push("RepoManager");
+            
+            // Создаем директорию если её нет
+            if let Err(_) = std::fs::create_dir_all(&path) {
+                // Fallback на домашнюю директорию
+                path = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+                path.push(".repo_manager");
+                let _ = std::fs::create_dir_all(&path);
+            }
+            
+            path.push("config.json");
+            return path;
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            let mut path = std::path::PathBuf::from(appdata);
+            path.push("RepoManager");
+            let _ = std::fs::create_dir_all(&path);
+            path.push("config.json");
+            return path;
+        }
+    }
+    
+    // Fallback для других ОС или если переменные среды недоступны
+    std::path::PathBuf::from("repo_manager_config.json")
+}
 
 #[derive(Debug)]
 enum AppMessage {
@@ -211,7 +246,10 @@ fn main() {
 
 impl MyApp {
     fn load_or_default() -> Self {
-        if let Ok(content) = std::fs::read_to_string(CONFIG_FILE) {
+        let config_path = get_config_file_path();
+        println!("Looking for config at: {:?}", config_path);
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            println!("Config loaded successfully from: {:?}", config_path);
             if let Ok(mut app) = serde_json::from_str::<MyApp>(&content) {
                 // Обновляем имена репозиториев после загрузки
                 for workspace in &mut app.workspaces {
@@ -232,13 +270,23 @@ impl MyApp {
                 app.first_startup = true;
                 return app;
             }
+        } else {
+            println!("Config file not found, using defaults");
         }
         MyApp::default()
     }
 
     fn save_config(&self) {
         if let Ok(content) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(CONFIG_FILE, content);
+            let config_path = get_config_file_path();
+            match std::fs::write(&config_path, content) {
+                Ok(_) => {
+                    println!("Config saved to: {:?}", config_path);
+                }
+                Err(e) => {
+                    eprintln!("Failed to save config to {:?}: {}", config_path, e);
+                }
+            }
         }
     }
 
