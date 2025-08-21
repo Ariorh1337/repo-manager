@@ -1,15 +1,11 @@
-// git_logic.rs
-
 use std::path::PathBuf;
 use crossbeam_channel::Sender;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 
-// Пул для ограничения одновременных git операций
 lazy_static::lazy_static! {
     static ref GIT_OPERATION_POOL: Arc<Mutex<VecDeque<()>>> = {
         let mut pool = VecDeque::new();
-        // Ограничиваем до 8 одновременных операций
         for _ in 0..8 {
             pool.push_back(());
         }
@@ -73,14 +69,12 @@ pub enum UiMessage {
 }
 
 pub fn get_git_info(repo_path: &PathBuf) -> Result<GitInfo, Box<dyn std::error::Error>> {
-    // Проверяем что это действительно git репозиторий
     if !repo_path.join(".git").exists() {
         return Err(format!("{:?} is not a git repository", repo_path).into());
     }
     
     let repo = gix::open(repo_path)?;
     
-    // Получаем текущую ветку через git command line
     let current_branch = if let Ok(output) = create_git_command()
         .args(&["branch", "--show-current"])
         .current_dir(repo_path)
@@ -96,7 +90,6 @@ pub fn get_git_info(repo_path: &PathBuf) -> Result<GitInfo, Box<dyn std::error::
         None
     };
     
-    // Получаем все ветки (упрощенная версия)
     let mut branches = Vec::new();
     if let Ok(output) = create_git_command()
         .args(&["branch", "-a"])
@@ -114,7 +107,6 @@ pub fn get_git_info(repo_path: &PathBuf) -> Result<GitInfo, Box<dyn std::error::
         }
     }
     
-    // Упрощенная проверка изменений - проверяем git status
     let has_changes = if let Ok(output) = create_git_command()
         .args(&["status", "--porcelain"])
         .current_dir(repo_path)
@@ -125,7 +117,6 @@ pub fn get_git_info(repo_path: &PathBuf) -> Result<GitInfo, Box<dyn std::error::
         false
     };
     
-    // Получаем ahead/behind (упрощенная версия)
     let (ahead, behind) = get_ahead_behind(&repo, &current_branch).unwrap_or((0, 0));
     
     Ok(GitInfo {
@@ -139,7 +130,6 @@ pub fn get_git_info(repo_path: &PathBuf) -> Result<GitInfo, Box<dyn std::error::
 
 fn get_ahead_behind(repo: &gix::Repository, current_branch: &Option<String>) -> Result<(usize, usize), Box<dyn std::error::Error>> {
     if let Some(branch_name) = current_branch {
-        // Используем git command line для получения ahead/behind
         if let Ok(output) = create_git_command()
             .args(&["rev-list", "--count", "--left-right", &format!("{}...origin/{}", branch_name, branch_name)])
             .current_dir(repo.git_dir().parent().unwrap_or(repo.git_dir()))
@@ -157,7 +147,6 @@ fn get_ahead_behind(repo: &gix::Repository, current_branch: &Option<String>) -> 
     Ok((0, 0))
 }
 
-// Обобщенная функция для отправки UiMessage
 pub fn refresh_repo_status_async<T>(repo_path: PathBuf, tx: Sender<T>) 
 where 
     T: From<UiMessage> + Send + 'static,
@@ -186,7 +175,6 @@ where
 pub fn switch_branch(repo_path: &PathBuf, branch_name: &str) -> Result<(), Box<dyn std::error::Error>> {
     let _repo = gix::open(repo_path)?;
     
-    // Упрощенная версия смены ветки - используем git command line
     let output = create_git_command()
         .args(&["checkout", branch_name])
         .current_dir(repo_path)
@@ -256,7 +244,6 @@ pub fn git_reset_hard(repo_path: &PathBuf) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-// Асинхронные версии git операций
 pub fn git_pull_async<T>(repo_path: PathBuf, tx: Sender<T>) 
 where 
     T: From<UiMessage> + Send + 'static,
@@ -272,7 +259,6 @@ where
             Ok(output) => {
                 if output.status.success() {
                     println!("Pulled for repo: {:?}", repo_path);
-                    // Обновляем git info после pull
                     match get_git_info(&repo_path) {
                         Ok(git_info) => {
                             let msg = UiMessage::RepoStatusUpdated { 
@@ -315,7 +301,6 @@ where
             Ok(output) => {
                 if output.status.success() {
                     println!("Pushed for repo: {:?}", repo_path);
-                    // Обновляем git info после push
                     match get_git_info(&repo_path) {
                         Ok(git_info) => {
                             let msg = UiMessage::RepoStatusUpdated { 
@@ -358,7 +343,6 @@ where
             Ok(output) => {
                 if output.status.success() {
                     println!("Fetched for repo: {:?}", repo_path);
-                    // Обновляем git info после fetch
                     match get_git_info(&repo_path) {
                         Ok(git_info) => {
                             let msg = UiMessage::RepoStatusUpdated { 
@@ -386,9 +370,7 @@ where
     });
 }
 
-// Быстрые gix версии основных операций (пока fallback на git команды, но с пулом)
 pub fn git_fetch_fast(repo_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    // Пока используем git команду, но в будущем можно заменить на pure gix
     let output = create_git_command()
         .args(&["fetch"])
         .current_dir(repo_path)
@@ -453,21 +435,18 @@ pub fn git_reset_hard_fast(repo_path: &PathBuf) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-// Вспомогательная функция для создания git команд с правильными флагами на Windows
 fn create_git_command() -> std::process::Command {
     let mut cmd = std::process::Command::new("git");
     
-    // На Windows в GUI режиме нужно скрыть окна процессов
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(0x08000000);
     }
     
     cmd
 }
 
-// Быстрые асинхронные версии с пулом операций
 pub fn git_pull_fast_async<T>(repo_path: PathBuf, tx: Sender<T>) 
 where 
     T: From<UiMessage> + Send + 'static,
@@ -475,7 +454,6 @@ where
     std::thread::spawn(move || {
         let _guard = PoolGuard::acquire();
         
-        // Используем быструю версию с пулом
         let result = git_pull_fast(&repo_path);
         
         match result {
@@ -509,7 +487,6 @@ where
     std::thread::spawn(move || {
         let _guard = PoolGuard::acquire();
         
-        // Используем быструю версию с пулом
         let result = git_push_fast(&repo_path);
         
         match result {
@@ -543,7 +520,6 @@ where
     std::thread::spawn(move || {
         let _guard = PoolGuard::acquire();
         
-        // Используем быструю версию с пулом
         let result = git_fetch_fast(&repo_path);
         
         match result {
@@ -575,7 +551,6 @@ where
     T: From<UiMessage> + Send + 'static,
 {
     std::thread::spawn(move || {
-        // Ждем доступности слота в пуле с таймаутом
         let _guard = match PoolGuard::try_acquire_with_timeout(5000) {
             Some(guard) => guard,
             None => {
@@ -585,10 +560,9 @@ where
             }
         };
         
-        // Retry логика с экспоненциальной задержкой
         let mut attempt = 0;
         let max_attempts = 3;
-        let mut delay_ms = 1000; // Начинаем с 1 секунды
+        let mut delay_ms = 1000;
         
         while attempt < max_attempts {
             attempt += 1;
@@ -610,32 +584,27 @@ where
                             let _ = tx.send(T::from(msg));
                         }
                     }
-                    return; // Успех, выходим
+                    return;
                 }
                 Err(e) => {
                     let error_str = e.to_string();
-                    // Проверяем на ошибки подключения
                     if error_str.contains("Connection closed") || 
                        error_str.contains("Connection refused") ||
                        error_str.contains("Could not read from remote repository") {
                         
                         if attempt < max_attempts {
-                            // Логируем попытку повтора
                             let retry_msg = UiMessage::Error(format!("Fetch failed for {:?} (attempt {}/{}), retrying in {}ms: {}", 
                                 repo_path, attempt, max_attempts, delay_ms, error_str));
                             let _ = tx.send(T::from(retry_msg));
                             
-                            // Ждем перед повтором
                             std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-                            delay_ms *= 2; // Экспоненциальная задержка
+                            delay_ms *= 2;
                         } else {
-                            // Финальная ошибка
                             let msg = UiMessage::Error(format!("Fetch failed for {:?} after {} attempts: {}", 
                                 repo_path, max_attempts, error_str));
                             let _ = tx.send(T::from(msg));
                         }
                     } else {
-                        // Не ошибка подключения, не повторяем
                         let msg = UiMessage::Error(format!("Fetch failed for {:?}: {}", repo_path, error_str));
                         let _ = tx.send(T::from(msg));
                         return;
