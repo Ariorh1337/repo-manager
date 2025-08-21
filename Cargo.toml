@@ -8,6 +8,8 @@ edition = "2021"
 # GUI
 egui = "0.27"
 eframe = "0.27" # Фреймворк для запуска egui-приложений
+egui_extras = { version = "0.27", features = ["image"] } # Для поддержки PNG иконок
+image = "0.24" # Для работы с PNG
 
 # Git-логика
 gix = { version = "0.62", features = ["blocking-network-client"] }

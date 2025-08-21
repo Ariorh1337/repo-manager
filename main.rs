@@ -2,8 +2,12 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod git_logic;
+mod icons;
+mod ui_components;
 
 use git_logic::{GitInfo, UiMessage, get_git_info, refresh_repo_status_async, switch_branch, git_reset_hard, switch_branch_fast, git_reset_hard_fast};
+use icons::{IconManager, IconType};
+use ui_components::{IconButton, icon_button, text_button, icon_text_button, icon_image};
 use std::path::PathBuf;
 use std::collections::HashSet;
 use crossbeam_channel::{Receiver, Sender};
@@ -180,6 +184,7 @@ impl Default for MyApp {
             show_logs: false,
             first_startup: true,
             pending_git_loads: 0,
+            icon_manager: IconManager::new(),
         }
     }
 }
@@ -230,6 +235,9 @@ struct MyApp {
     // Счетчик репозиториев ожидающих загрузки git информации
     #[serde(skip)]
     pending_git_loads: usize,
+    // Менеджер иконок
+    #[serde(skip)]
+    icon_manager: IconManager,
 }
 
 fn main() {
@@ -521,7 +529,10 @@ impl MyApp {
                         ui.colored_label(egui::Color32::DARK_GRAY, format!("({} элементов)", total_items));
                     }
                 } else {
-                    ui.label(format!("[DIR] {}", node.name));
+                    ui.horizontal(|ui| {
+                        icon_button(ui, &mut self.icon_manager, IconType::Folder);
+                        ui.label(&node.name);
+                    });
                 }
             });
             
@@ -614,11 +625,11 @@ impl MyApp {
                             ui.set_min_size(egui::Vec2::new(status_width, 25.0));
                             
                             if self.syncing_repos.contains(&repo.path) {
-                                ui.spinner();
+                                ui.spinner(); 
                             }
                             
                             if repo.git_info.behind > 0 {
-                                let pull_button = ui.button(format!("Pull {}", repo.git_info.behind));
+                                let pull_button = icon_text_button(ui, &mut self.icon_manager, IconType::Pull, format!("{}", repo.git_info.behind));
                                 if pull_button.clicked() {
                                     self.log_info(format!("Starting pull for {}", repo.name));
                                     self.syncing_repos.insert(repo.path.clone());
@@ -630,7 +641,7 @@ impl MyApp {
                             }
                             
                             if repo.git_info.ahead > 0 {
-                                let push_button = ui.button(format!("Push {}", repo.git_info.ahead));
+                                let push_button = icon_text_button(ui, &mut self.icon_manager, IconType::Push, format!("{}", repo.git_info.ahead));
                                 if push_button.clicked() {
                                     self.log_info(format!("Starting push for {}", repo.name));
                                     self.syncing_repos.insert(repo.path.clone());
@@ -650,7 +661,7 @@ impl MyApp {
 
                     // Колонка 4: Меню действий
                     ui.menu_button("»", |ui| {
-                        if ui.button("Fetch").clicked() {
+                        if text_button(ui, &mut self.icon_manager, "Fetch").clicked() {
                             self.log_info(format!("Starting fetch for {}", repo.name));
                             self.syncing_repos.insert(repo.path.clone());
                             if let Some(tx) = &self.app_sender {
@@ -662,7 +673,8 @@ impl MyApp {
                             println!("Fetch with rebase for {:?}", repo.path);
                             ui.close_menu();
                         }
-                        if ui.button("Refresh").clicked() {
+                        if IconButton::icon(IconType::Refresh)
+                            .show(ui, &mut self.icon_manager).clicked() {
                             if let Some(tx) = &self.app_sender {
                                 refresh_repo_status_async::<AppMessage>(repo.path.clone(), tx.clone());
                             }
@@ -685,7 +697,7 @@ impl MyApp {
                             ui.close_menu();
                         }
                         ui.separator();
-                        if ui.button("Remove").clicked() {
+                        if icon_text_button(ui, &mut self.icon_manager, IconType::Trash, "Remove").clicked() {
                             *to_remove.borrow_mut() = Some(*original_idx);
                             ui.close_menu();
                         }
@@ -993,6 +1005,7 @@ impl eframe::App for MyApp {
             .default_width(self.sidebar_width)
             .width_range(200.0..=400.0)
             .show(ctx, |ui| {
+
             // Сохраняем ширину sidebar
             let new_width = ui.available_width();
             if (self.sidebar_width - new_width).abs() > 1.0 {
@@ -1023,30 +1036,25 @@ impl eframe::App for MyApp {
                         
                         // Кнопки справа
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Cancel").clicked() {
-                                to_remove = Some(idx);
+                            if icon_button(ui, &mut self.icon_manager, IconType::Cross).clicked() {
+                                self.editing_workspace = None;
                             }
-                            if ui.button("Save").clicked() {
+                            if icon_button(ui, &mut self.icon_manager, IconType::Check).clicked() {
                                 to_rename = Some((idx, self.new_workspace_name.clone()));
                             }
                         });
                     } else {
-                        ui.allocate_ui_with_layout(
-                            egui::Vec2::new(ui.available_width() - 80.0, 20.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                if ui.selectable_value(&mut self.active_workspace_idx, idx, &workspace.name).clicked() {
-                                    self.active_workspace_idx = idx;
-                                }
-                            }
-                        );
+                        // Селектор workspace
+                        if ui.selectable_value(&mut self.active_workspace_idx, idx, &workspace.name).clicked() {
+                            self.active_workspace_idx = idx;
+                        }
                         
-                        // Кнопки справа
+                        // Добавляем пространство перед кнопками
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Delete").clicked() {
+                            if icon_button(ui, &mut self.icon_manager, IconType::Trash).clicked() {
                                 to_remove = Some(idx);
                             }
-                            if ui.button("Edit").clicked() {
+                            if icon_button(ui, &mut self.icon_manager, IconType::Edit).clicked() {
                                 self.editing_workspace = Some(idx);
                                 self.new_workspace_name = workspace.name.clone();
                             }
@@ -1083,10 +1091,12 @@ impl eframe::App for MyApp {
             }
             
             if should_add_workspace {
-                self.workspaces.push(Workspace {
+                let new_workspace = Workspace {
                     name: format!("Workspace {}", self.workspaces.len() + 1),
                     repositories: vec![],
-                });
+                };
+
+                self.workspaces.push(new_workspace);
                 self.save_config();
             }
             
@@ -1172,9 +1182,16 @@ impl eframe::App for MyApp {
             }
 
             let mut should_fetch_all = false;
+            // Безопасно получаем текущий workspace
+            if self.active_workspace_idx >= self.workspaces.len() {
+                self.active_workspace_idx = self.workspaces.len().saturating_sub(1);
+            }
+            
             let workspace_name = self.workspaces.get(self.active_workspace_idx)
                 .map(|w| w.name.clone())
                 .unwrap_or_default();
+            
+
             
             ui.horizontal(|ui| {
                 ui.heading(&workspace_name);
@@ -1206,7 +1223,10 @@ impl eframe::App for MyApp {
                     if warning_count > 0 {
                         ui.colored_label(egui::Color32::YELLOW, format!("[!] {}", warning_count));
                     }
-                    ui.colored_label(egui::Color32::LIGHT_GRAY, format!("[LOG] {}", self.logs.len()));
+                    ui.horizontal(|ui| {
+                        icon_image(ui, &mut self.icon_manager, IconType::Info);
+                        ui.colored_label(egui::Color32::LIGHT_GRAY, format!("{}", self.logs.len()));
+                    });
                 }
             });
             
@@ -1252,6 +1272,7 @@ impl eframe::App for MyApp {
             });
 
             ui.separator();
+
 
             if self.workspaces.get(self.active_workspace_idx).map_or(true, |w| w.repositories.is_empty()) {
                 ui.centered_and_justified(|ui| {
