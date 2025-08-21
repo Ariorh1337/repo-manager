@@ -24,9 +24,7 @@ serde = { version = "1.0", features = ["derive"] } # Для сохранения
 serde_json = "1.0" # Для JSON сериализации
 lazy_static = "1.4" # Для глобального пула операций
 
-[[bin]]
-name = "repo-manager"
-path = "main.rs"
+
 
 # Для создания app bundle на macOS без консоли
 [package.metadata.bundle]
