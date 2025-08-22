@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use crate::config::{Config, ConfigManager};
 use crate::git::refresh_repo_status_async;
+use crate::localization::Localizer;
 use crate::logging::Logger;
 use crate::ui::IconManager;
 use crate::workspace::Workspace;
@@ -20,6 +21,7 @@ pub struct MyApp {
     pub config: Config,
     pub logger: Logger,
     pub icon_manager: IconManager,
+    pub localizer: Localizer,
 
     pub active_workspace_idx: usize,
     pub editing_workspace: Option<usize>,
@@ -49,6 +51,7 @@ impl Default for MyApp {
             config: Config::default(),
             logger: Logger::default(),
             icon_manager: IconManager::new(),
+            localizer: Localizer::new("en"),
 
             active_workspace_idx: 0,
             editing_workspace: None,
@@ -78,6 +81,7 @@ impl MyApp {
     pub fn load_or_default() -> Self {
         let config = ConfigManager::load();
         let mut app = Self {
+            localizer: Localizer::new(&config.language),
             config,
             ..Default::default()
         };

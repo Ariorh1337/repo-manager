@@ -6,6 +6,7 @@
 mod app;
 mod config;
 mod git;
+mod localization;
 mod logging;
 mod ui;
 mod workspace;
@@ -16,6 +17,7 @@ use git::{
     git_fetch_fast_async, git_fetch_fast_async_with_retry, git_pull_fast_async,
     git_push_fast_async, git_reset_hard, refresh_repo_status_async, switch_branch, GitMessage,
 };
+
 use logging::LogLevel;
 use ui::{Button, Icon, IconType};
 use workspace::{RepositoryState, Workspace};
@@ -44,11 +46,13 @@ fn main() {
 
 impl MyApp {
     fn add_repository(&mut self, path: PathBuf) {
-        self.logger
-            .info(format!("Searching for repositories in: {}", path.display()));
-        self.search_status = Some(format!(
-            "Поиск репозиториев в {:?}...",
-            path.file_name().unwrap_or_default()
+        self.logger.info(
+            self.localizer
+                .tf("searching_in_path", &[&path.display().to_string()]),
+        );
+        self.search_status = Some(self.localizer.tf(
+            "searching_repos",
+            &[&format!("{:?}", path.file_name().unwrap_or_default())],
         ));
         self.search_status_timer = Some(std::time::Instant::now());
         self.is_searching = true;
@@ -100,7 +104,8 @@ impl MyApp {
                     if total_items > 0 {
                         ui.colored_label(
                             egui::Color32::DARK_GRAY,
-                            format!("({} элементов)", total_items),
+                            self.localizer
+                                .tf("elements_count", &[&total_items.to_string()]),
                         );
                     }
                 } else {
@@ -130,16 +135,18 @@ impl MyApp {
                     ui.add_space(indent);
 
                     let available_width = ui.available_width();
-                    let fetch_button_width = 25.0;
-                    let menu_width = 30.0;
-                    let status_width = 120.0;
-                    let branch_width = f32::min(200.0, f32::max(120.0, available_width * 0.25));
-                    let repo_width = available_width
-                        - branch_width
-                        - status_width
-                        - fetch_button_width
-                        - menu_width
-                        - 20.0;
+                    let fetch_button_width = 30.0;
+                    let menu_width = 35.0;
+                    let status_width = 130.0;
+                    let branch_width = f32::min(180.0, f32::max(100.0, available_width * 0.2));
+
+                    let buttons_width = fetch_button_width + menu_width + 10.0;
+                    let min_repo_width = 100.0;
+
+                    let repo_width = f32::max(
+                        min_repo_width,
+                        available_width - branch_width - status_width - buttons_width,
+                    );
 
                     ui.allocate_ui_with_layout(
                         egui::Vec2::new(repo_width, 25.0),
@@ -178,9 +185,9 @@ impl MyApp {
 
                                         if label.clicked() {
                                             if let Err(e) = switch_branch(&repo.path, branch) {
-                                                self.logger.error(format!(
-                                                    "Branch switch error for {}: {}",
-                                                    repo.name, e
+                                                self.logger.error(self.localizer.tf(
+                                                    "branch_switch_error",
+                                                    &[&repo.name, &e.to_string()],
                                                 ));
                                             } else {
                                                 if let Some(tx) = &self.app_sender {
@@ -213,7 +220,8 @@ impl MyApp {
                                 )
                                 .show(ui, &mut self.icon_manager);
                                 if pull_button.clicked() {
-                                    self.logger.info(format!("Starting pull for {}", repo.name));
+                                    self.logger
+                                        .info(self.localizer.tf("starting_pull", &[&repo.name]));
                                     self.syncing_repos.insert(repo.path.clone());
                                     if let Some(tx) = &self.app_sender {
                                         git_pull_fast_async::<AppMessage>(
@@ -222,10 +230,10 @@ impl MyApp {
                                         );
                                     }
                                 }
-                                pull_button.on_hover_text(format!(
-                                    "Pull: {} коммитов на сервере",
-                                    repo.git_info.behind
-                                ));
+                                pull_button.on_hover_text(
+                                    self.localizer
+                                        .tf("pull_commits", &[&repo.git_info.behind.to_string()]),
+                                );
                             }
 
                             if repo.git_info.ahead > 0 {
@@ -235,7 +243,8 @@ impl MyApp {
                                 )
                                 .show(ui, &mut self.icon_manager);
                                 if push_button.clicked() {
-                                    self.logger.info(format!("Starting push for {}", repo.name));
+                                    self.logger
+                                        .info(self.localizer.tf("starting_push", &[&repo.name]));
                                     self.syncing_repos.insert(repo.path.clone());
                                     if let Some(tx) = &self.app_sender {
                                         git_push_fast_async::<AppMessage>(
@@ -244,35 +253,32 @@ impl MyApp {
                                         );
                                     }
                                 }
-                                push_button.on_hover_text(format!(
-                                    "Push: {} локальных коммитов",
-                                    repo.git_info.ahead
-                                ));
+                                push_button.on_hover_text(
+                                    self.localizer
+                                        .tf("push_commits", &[&repo.git_info.ahead.to_string()]),
+                                );
                             }
 
                             if self.error_repos.contains(&repo.path) {
                                 let error_indicator = ui.colored_label(egui::Color32::RED, "!");
-                                error_indicator
-                                    .on_hover_text("Произошла ошибка при загрузке репозитория");
+                                error_indicator.on_hover_text(&self.localizer.t("error_loading"));
                             }
 
                             if !self.error_repos.contains(&repo.path) && repo.git_info.has_changes {
                                 let changes_indicator =
                                     ui.colored_label(egui::Color32::YELLOW, "!");
-                                changes_indicator.on_hover_text(
-                                    "Есть незакоммиченные изменения в рабочей директории",
-                                );
+                                changes_indicator.on_hover_text(&self.localizer.t("has_changes"));
                             }
                         },
                     );
 
                     if Button::icon(IconType::Refresh)
                         .show(ui, &mut self.icon_manager)
-                        .on_hover_text("Fetch")
+                        .on_hover_text(&self.localizer.t("fetch"))
                         .clicked()
                     {
                         self.logger
-                            .info(format!("Starting fetch for {}", repo.name));
+                            .info(self.localizer.tf("starting_fetch", &[&repo.name]));
                         self.syncing_repos.insert(repo.path.clone());
                         if let Some(tx) = &self.app_sender {
                             git_fetch_fast_async::<AppMessage>(repo.path.clone(), tx.clone());
@@ -280,20 +286,20 @@ impl MyApp {
                     }
 
                     ui.menu_button("»", |ui| {
-                        if Button::icon_text(IconType::Refresh, "Fetch")
+                        if Button::icon_text(IconType::Refresh, &self.localizer.t("fetch"))
                             .full_width()
                             .show(ui, &mut self.icon_manager)
                             .clicked()
                         {
                             self.logger
-                                .info(format!("Starting fetch for {}", repo.name));
+                                .info(self.localizer.tf("starting_fetch", &[&repo.name]));
                             self.syncing_repos.insert(repo.path.clone());
                             if let Some(tx) = &self.app_sender {
                                 git_fetch_fast_async::<AppMessage>(repo.path.clone(), tx.clone());
                             }
                             ui.close_menu();
                         }
-                        if Button::icon_text(IconType::Refresh, "Fetch & Rebase")
+                        if Button::icon_text(IconType::Refresh, &self.localizer.t("fetch_rebase"))
                             .full_width()
                             .show(ui, &mut self.icon_manager)
                             .clicked()
@@ -301,7 +307,7 @@ impl MyApp {
                             println!("Fetch with rebase for {:?}", repo.path);
                             ui.close_menu();
                         }
-                        if Button::icon_text(IconType::Refresh, "Refresh")
+                        if Button::icon_text(IconType::Refresh, &self.localizer.t("refresh"))
                             .full_width()
                             .show(ui, &mut self.icon_manager)
                             .clicked()
@@ -316,17 +322,19 @@ impl MyApp {
                             ui.close_menu();
                         }
                         ui.separator();
-                        if Button::icon_text(IconType::Cross, "Reset Changes")
+                        if Button::icon_text(IconType::Cross, &self.localizer.t("reset_changes"))
                             .full_width()
                             .show(ui, &mut self.icon_manager)
                             .clicked()
                         {
                             if let Err(e) = git_reset_hard(&repo.path) {
-                                self.logger
-                                    .error(format!("Reset error for {}: {}", repo.name, e));
+                                self.logger.error(
+                                    self.localizer
+                                        .tf("reset_error", &[&repo.name, &e.to_string()]),
+                                );
                             } else {
                                 self.logger
-                                    .info(format!("Reset local changes for {}", repo.name));
+                                    .info(self.localizer.tf("reset_success", &[&repo.name]));
                                 if let Some(tx) = &self.app_sender {
                                     refresh_repo_status_async::<AppMessage>(
                                         repo.path.clone(),
@@ -337,7 +345,7 @@ impl MyApp {
                             ui.close_menu();
                         }
                         ui.separator();
-                        if Button::icon_text(IconType::Trash, "Remove repo")
+                        if Button::icon_text(IconType::Trash, &self.localizer.t("remove_repo"))
                             .full_width()
                             .show(ui, &mut self.icon_manager)
                             .clicked()
@@ -390,10 +398,9 @@ impl eframe::App for MyApp {
                 self.load_workspace(self.active_workspace_idx);
 
                 if let Some(workspace) = self.config.workspaces.get(self.active_workspace_idx) {
-                    self.logger.info(format!(
-                        "Loading active workspace '{}' with {} repositories",
-                        workspace.name,
-                        workspace.repositories.len()
+                    self.logger.info(self.localizer.tf(
+                        "loading_workspace",
+                        &[&workspace.name, &workspace.repositories.len().to_string()],
                     ));
                 }
             }
@@ -449,18 +456,18 @@ impl eframe::App for MyApp {
                         if self.pending_git_loads == 0 {
                             pending_logs.push((
                                 LogLevel::Info,
-                                format!(
-                                    "All repositories loaded! Last: {}",
-                                    repo_name.to_string_lossy()
-                                ),
+                                self.localizer
+                                    .tf("repo_loaded_last", &[&repo_name.to_string_lossy()]),
                             ));
                         } else {
                             pending_logs.push((
                                 LogLevel::Info,
-                                format!(
-                                    "Loaded: {} ({} remaining)",
-                                    repo_name.to_string_lossy(),
-                                    self.pending_git_loads
+                                self.localizer.tf(
+                                    "repo_loaded_remaining",
+                                    &[
+                                        &repo_name.to_string_lossy(),
+                                        &self.pending_git_loads.to_string(),
+                                    ],
                                 ),
                             ));
                         }
@@ -481,13 +488,15 @@ impl eframe::App for MyApp {
 
                                 if self.startup_loaded_repos >= total_repos {
                                     self.is_loading_on_startup = false;
-                                    self.search_status =
-                                        Some("Все репозитории загружены".to_string());
+                                    self.search_status = Some(self.localizer.t("all_repos_loaded"));
                                     self.search_status_timer = Some(std::time::Instant::now());
                                 } else {
-                                    self.search_status = Some(format!(
-                                        "Загружено {}/{} репозиториев",
-                                        self.startup_loaded_repos, total_repos
+                                    self.search_status = Some(self.localizer.tf(
+                                        "loaded_count",
+                                        &[
+                                            &self.startup_loaded_repos.to_string(),
+                                            &total_repos.to_string(),
+                                        ],
                                     ));
                                 }
                             }
@@ -518,13 +527,15 @@ impl eframe::App for MyApp {
 
                         if self.startup_loaded_repos >= total_repos {
                             self.is_loading_on_startup = false;
-                            self.search_status =
-                                Some("Загрузка завершена (с ошибками)".to_string());
+                            self.search_status = Some(self.localizer.t("loading_complete_errors"));
                             self.search_status_timer = Some(std::time::Instant::now());
                         } else {
-                            self.search_status = Some(format!(
-                                "Загружено {}/{} репозиториев",
-                                self.startup_loaded_repos, total_repos
+                            self.search_status = Some(self.localizer.tf(
+                                "loaded_count",
+                                &[
+                                    &self.startup_loaded_repos.to_string(),
+                                    &total_repos.to_string(),
+                                ],
                             ));
                         }
                     }
@@ -554,21 +565,26 @@ impl eframe::App for MyApp {
                         self.save_config();
                         pending_logs.push((
                             LogLevel::Info,
-                            format!("Added {} repositories", added_count),
+                            self.localizer
+                                .tf("added_repos_log", &[&added_count.to_string()]),
                         ));
-                        self.search_status =
-                            Some(format!("Добавлено {} репозиториев", added_count));
+                        self.search_status = Some(
+                            self.localizer
+                                .tf("added_repos", &[&added_count.to_string()]),
+                        );
                     } else {
                         pending_logs
-                            .push((LogLevel::Warning, "No new repositories found".to_string()));
-                        self.search_status =
-                            Some("Репозитории не найдены или уже добавлены".to_string());
+                            .push((LogLevel::Warning, self.localizer.t("no_new_repos_log")));
+                        self.search_status = Some(self.localizer.t("no_repos_found"));
                     }
                     self.search_status_timer = Some(std::time::Instant::now());
                 }
                 AppMessage::SearchComplete { total_found } => {
                     self.is_searching = false;
-                    self.search_status = Some(format!("Найдено {} репозиториев", total_found));
+                    self.search_status = Some(
+                        self.localizer
+                            .tf("found_repos", &[&total_found.to_string()]),
+                    );
                     self.search_status_timer = Some(std::time::Instant::now());
                 }
             }
@@ -600,7 +616,6 @@ impl eframe::App for MyApp {
             }
         });
 
-        // Если редактируем workspace, фиксируем ширину панели
         let is_editing = self.editing_workspace.is_some();
         let mut panel = egui::SidePanel::left("workspaces_panel")
             .resizable(!is_editing)
@@ -621,7 +636,7 @@ impl eframe::App for MyApp {
 
             ui.set_max_width(self.config.sidebar_width);
 
-            ui.heading("Workspaces");
+            ui.heading(&self.localizer.t("workspaces"));
 
             let mut to_remove = None;
             let mut to_rename = None;
@@ -706,7 +721,7 @@ impl eframe::App for MyApp {
                 });
             }
 
-            if ui.button("+ New Workspace").clicked() {
+            if ui.button(&self.localizer.t("new_workspace")).clicked() {
                 should_add_workspace = true;
             }
 
@@ -737,7 +752,7 @@ impl eframe::App for MyApp {
 
             if let Some(idx) = switch_to_workspace_idx {
                 self.logger
-                    .info(format!("UI requested switch to workspace index: {}", idx));
+                    .info(self.localizer.tf("switch_workspace", &[&idx.to_string()]));
                 self.switch_to_workspace(idx);
             }
 
@@ -766,10 +781,10 @@ impl eframe::App for MyApp {
                 .height_range(100.0..=400.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.heading("Logs");
+                        ui.heading(&self.localizer.t("logs"));
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Clear").clicked() {
+                            if ui.button(&self.localizer.t("clear")).clicked() {
                                 self.logger.clear();
                             }
                         });
@@ -813,7 +828,7 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.config.workspaces.is_empty() {
                 ui.centered_and_justified(|ui| {
-                    ui.label("Создайте workspace для начала работы");
+                    ui.label(&self.localizer.t("create_workspace"));
                 });
                 return;
             }
@@ -833,49 +848,89 @@ impl eframe::App for MyApp {
 
             ui.horizontal(|ui| {
                 ui.heading(&workspace_name);
-                if ui.button("Fetch All").clicked() {
+                if ui.button(&self.localizer.t("fetch_all")).clicked() {
                     should_fetch_all = true;
                 }
-                if ui.button("Refresh All").clicked() {
+                if ui.button(&self.localizer.t("refresh_all")).clicked() {
                     should_refresh_all = true;
                 }
 
                 ui.separator();
 
-                let logs_button_text = if self.show_logs {
-                    "Hide Logs"
-                } else {
-                    "Show Logs"
-                };
-                if ui.button(logs_button_text).clicked() {
-                    self.show_logs = !self.show_logs;
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let current_language = self.localizer.get_language().to_string();
+                    let languages: Vec<(String, String)> = self
+                        .localizer
+                        .get_available_languages()
+                        .into_iter()
+                        .map(|(code, name)| (code.to_string(), name))
+                        .collect();
+                    let selected_text = languages
+                        .iter()
+                        .find(|(code, _)| *code == current_language)
+                        .map(|(_, name)| name.as_str())
+                        .unwrap_or("English");
 
-                if self.pending_git_loads > 0 {
-                    ui.colored_label(
-                        egui::Color32::LIGHT_BLUE,
-                        format!("[LOADING] Git info... ({} left)", self.pending_git_loads),
-                    );
-                }
+                    egui::ComboBox::from_label(&self.localizer.t("language"))
+                        .selected_text(selected_text)
+                        .show_ui(ui, |ui| {
+                            for (lang_code, lang_name) in languages {
+                                if ui
+                                    .selectable_label(current_language == lang_code, &lang_name)
+                                    .clicked()
+                                {
+                                    self.localizer.set_language(&lang_code);
+                                    self.config.language = lang_code.to_string();
+                                    self.save_config();
+                                }
+                            }
+                        });
 
-                if !self.logger.logs().is_empty() {
-                    let error_count = self.logger.error_count();
-                    let warning_count = self.logger.warning_count();
+                    ui.separator();
 
-                    if error_count > 0 {
-                        ui.colored_label(egui::Color32::LIGHT_RED, format!("[E] {}", error_count));
+                    let logs_button_text = if self.show_logs {
+                        self.localizer.t("hide_logs")
+                    } else {
+                        self.localizer.t("show_logs")
+                    };
+                    if ui.button(&logs_button_text).clicked() {
+                        self.show_logs = !self.show_logs;
                     }
-                    if warning_count > 0 {
-                        ui.colored_label(egui::Color32::YELLOW, format!("[!] {}", warning_count));
-                    }
-                    ui.horizontal(|ui| {
-                        Icon::show(ui, &mut self.icon_manager, IconType::Info, None);
+
+                    if self.pending_git_loads > 0 {
                         ui.colored_label(
-                            egui::Color32::LIGHT_GRAY,
-                            format!("{}", self.logger.total_count()),
+                            egui::Color32::LIGHT_BLUE,
+                            self.localizer
+                                .tf("loading_git_info", &[&self.pending_git_loads.to_string()]),
                         );
-                    });
-                }
+                    }
+
+                    if !self.logger.logs().is_empty() {
+                        let error_count = self.logger.error_count();
+                        let warning_count = self.logger.warning_count();
+
+                        ui.horizontal(|ui| {
+                            Icon::show(ui, &mut self.icon_manager, IconType::Info, None);
+                            ui.colored_label(
+                                egui::Color32::LIGHT_GRAY,
+                                format!("{}", self.logger.total_count()),
+                            );
+                        });
+
+                        if warning_count > 0 {
+                            ui.colored_label(
+                                egui::Color32::YELLOW,
+                                format!("[!] {}", warning_count),
+                            );
+                        }
+                        if error_count > 0 {
+                            ui.colored_label(
+                                egui::Color32::LIGHT_RED,
+                                format!("[E] {}", error_count),
+                            );
+                        }
+                    }
+                });
             });
 
             if should_fetch_all {
@@ -887,8 +942,10 @@ impl eframe::App for MyApp {
                         .map(|r| r.path.clone())
                         .collect();
 
-                    self.logger
-                        .info(format!("Starting fetch for {} repositories", repo_count));
+                    self.logger.info(
+                        self.localizer
+                            .tf("starting_fetch_all", &[&repo_count.to_string()]),
+                    );
 
                     for (index, repo_path) in repos.into_iter().enumerate() {
                         self.syncing_repos.insert(repo_path.clone());
@@ -915,13 +972,16 @@ impl eframe::App for MyApp {
             ui.separator();
 
             ui.horizontal(|ui| {
-                ui.label("Поиск:");
+                ui.label(&self.localizer.t("search"));
                 ui.text_edit_singleline(&mut self.search_query);
 
                 ui.separator();
 
                 if ui
-                    .checkbox(&mut self.config.sort_by_name, "Сортировать по имени")
+                    .checkbox(
+                        &mut self.config.sort_by_name,
+                        &self.localizer.t("sort_by_name"),
+                    )
                     .changed()
                 {
                     self.save_config();
@@ -932,7 +992,7 @@ impl eframe::App for MyApp {
 
             if self.get_active_workspace().map_or(true, |w| w.is_empty()) {
                 ui.centered_and_justified(|ui| {
-                    ui.label("Перетащите папки с репозиториями в это окно");
+                    ui.label(&self.localizer.t("drag_folders"));
                 });
                 return;
             }

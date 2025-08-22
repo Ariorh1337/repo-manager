@@ -2,12 +2,28 @@ use std::path::PathBuf;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Config {
+    #[serde(default)]
     pub workspaces: Vec<crate::workspace::Workspace>,
+    #[serde(default)]
     pub window_width: Option<f32>,
+    #[serde(default)]
     pub window_height: Option<f32>,
+    #[serde(default = "default_sidebar_width")]
     pub sidebar_width: f32,
+    #[serde(default)]
     pub sort_by_name: bool,
+    #[serde(default)]
     pub last_active_workspace_index: Option<usize>,
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_sidebar_width() -> f32 {
+    250.0
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for Config {
@@ -19,6 +35,7 @@ impl Default for Config {
             sidebar_width: 250.0,
             sort_by_name: false,
             last_active_workspace_index: None,
+            language: "en".to_string(),
         }
     }
 }
