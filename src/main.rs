@@ -626,7 +626,6 @@ impl eframe::App for MyApp {
             let mut to_remove = None;
             let mut to_rename = None;
             let mut should_add_workspace = false;
-            let mut should_refresh_all = false;
             let mut switch_to_workspace_idx: Option<usize> = None;
 
             for (idx, workspace) in self.config.workspaces.iter().enumerate() {
@@ -713,10 +712,6 @@ impl eframe::App for MyApp {
 
             ui.separator();
 
-            if ui.button("Refresh All").clicked() {
-                should_refresh_all = true;
-            }
-
             if let Some((idx, new_name)) = to_rename {
                 if let Some(ws) = self.config.workspaces.get_mut(idx) {
                     ws.name = new_name;
@@ -744,10 +739,6 @@ impl eframe::App for MyApp {
                 self.logger
                     .info(format!("UI requested switch to workspace index: {}", idx));
                 self.switch_to_workspace(idx);
-            }
-
-            if should_refresh_all {
-                self.refresh_all_repos();
             }
 
             if let Some(status) = &self.search_status {
@@ -838,10 +829,15 @@ impl eframe::App for MyApp {
                 .map(|w| w.name.clone())
                 .unwrap_or_default();
 
+            let mut should_refresh_all = false;
+
             ui.horizontal(|ui| {
                 ui.heading(&workspace_name);
                 if ui.button("Fetch All").clicked() {
                     should_fetch_all = true;
+                }
+                if ui.button("Refresh All").clicked() {
+                    should_refresh_all = true;
                 }
 
                 ui.separator();
@@ -910,6 +906,10 @@ impl eframe::App for MyApp {
                         }
                     }
                 }
+            }
+
+            if should_refresh_all {
+                self.refresh_all_repos();
             }
 
             ui.separator();
